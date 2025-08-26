@@ -1,0 +1,40 @@
+---
+- name: install apache
+  hosts: all
+  tasks:
+
+    - name: copy cabundle
+      ansible.builtin.copy:
+        src: vapo-custom-cacert.crt
+        dest: /etc/pki/ca-trust/source/anchors/custom-CAs.crt
+
+    - name: update ca-trust
+      ansible.builtin.command: /usr/bin/update-ca-trust
+
+    - name: install software
+      ansible.builtin.dnf:
+        name:
+          - httpd
+          - mod_ssl
+          - python3
+          - python3-pip
+        state: latest
+
+    - name: install pip stuffs
+      ansible.builtin.pip:
+        name:
+          - cryptography
+          - vcert
+
+    - name: start and enable service
+      service:
+        name: httpd
+        state: restarted
+        enabled: yes
+      ignore_errors: yes
+
+    - name: create html dir
+      file:
+        path: /var/www/html
+        state: directory
+        mode: '0755' 

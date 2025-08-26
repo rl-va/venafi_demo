@@ -1,0 +1,42 @@
+---
+- name: Delete a certificate from Venafi
+  hosts: all
+  connection: local
+  gather_facts: false
+  vars:
+    venafi_url: "https://vaww.certmgr-dev.va.gov"
+    venafi_api_key: "{{ passwordonly }}"
+    cert_id_to_delete: "{{ user_cn }}"
+
+  tasks:
+    - name: Perform DELETE request to remove the certificate
+      ansible.builtin.uri:
+        url: "{{ venafi_url }}/vedsdk/Certificates/{{ \ {cert_guid\ } }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ venafi_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        # body:
+        #   CertificateId: '{06f7b99ccd8be8e186ef09855e177f8a7e1ddca1}' #"{{ cert_id_to_delete }}"
+        status_code: 200 # Expect a 200 OK status on success
+      register: delete_result
+      delegate_to: localhost
+
+    - name: Check the API response
+      ansible.builtin.debug:
+        msg: "Certificate deletion result: {{ delete_result.json }}"
+
+    # - name: Delete a certificate using its GUID
+    #   venafi.machine_identity.venafi_certificate:
+    #     url: https://vaww.certmgr-dev.va.gov
+    #     access_token: "{{ passwordonly }}"
+    #     zone: '\VED\Policy\Certificates\Venafi'
+    #     trust_bundle: /etc/pki/ca-trust/source/anchors/custom-CAs.crt
+    #     common_name: "{{ user_cn }}"
+    #     state: absent # <-- This is the key parameter for deletion
+    #     cert_path: '/tmp/cert.pem'
+    #     path: '/tmp/cert1.pem'
+    #   delegate_to: localhost
+        
+

@@ -1,0 +1,89 @@
+# Enroll new certificate
+- name: New Venafi with custom cn  certificate
+  hosts: all
+  vars:
+    certificate_common_name: "{{ user_cn }}-{{ cn }}.example.va.gov"
+    certificate_cert_dir: "/etc/ssl/{{ ansible_hostname }}.va.gov"
+    certificate_privatekey_path: "{{ certificate_cert_dir }}/{{ certificate_common_name }}.key"
+    certificate_csr_path: "{{ certificate_cert_dir }}/{{ certificate_common_name }}.csr"
+    # certificate_alt_name: "DNS:{{ ansible_fqdn }}" #{{ user_cn }}-{{ cn }}.example.va.gov" #IP:{{ansible_default_ipv4.address}} #
+    certificate_cert_path: "{{ certificate_cert_dir }}/{{ certificate_common_name }}.pem"
+    certificate_chain_path: "{{ certificate_cert_dir }}/{{ certificate_common_name }}.chain.pem"
+    certificate_remote_execution: true
+    
+  pre_tasks:
+    - name: create credentials.yml
+      ansible.builtin.template:
+        src: credentials.yml.j2
+        dest: ./credentials.yml
+      delegate_to: localhost
+      become: false
+
+    - name: print creds
+      ansible.builtin.command: cat ./credentials.yml
+      delegate_to: localhost
+      become: false
+
+    - name: "Set CN fact"
+      set_fact:
+        cn: "{{ 10000|random }}"    
+
+    - name: Ensure PKI directory exists on remote
+      ansible.builtin.file:
+        path: "{{ certificate_cert_dir }}"
+        state: directory
+        mode: '0755'
+      become: true
+
+    - name: Generate the private key
+      ansible.builtin.openssl_privatekey:
+        path: "{{ certificate_privatekey_path }}"
+        size: 2048
+        mode: '0600'
+      become: true
+
+    - name: Generate the CSR from the new key
+      community.crypto.openssl_csr:
+        path: "{{ certificate_csr_path }}"
+        privatekey_path: "{{ certificate_privatekey_path }}"
+        common_name: "{{ certificate_common_name }}"
+        organization_name: "VAPO"
+      become: true
+    
+  roles:
+    - role: venafi.machine_identity.certificate
+      become: true
+  
+  post_tasks:
+
+    - name: change ssl config
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf.d/ssl.conf
+        regexp: '^SSLCertificateFile'
+        line: SSLCertificateFile {{ certificate_cert_path }}
+        owner: root
+        group: root
+        serole: _default
+        setype: _default
+        seuser: _default
+        mode: 0644
+      become: true
+        
+    - name: change ssl config
+      ansible.builtin.lineinfile:
+        path: /etc/httpd/conf.d/ssl.conf
+        regexp: '^SSLCertificateKeyFile'
+        line: SSLCertificateKeyFile {{ certificate_privatekey_path }}
+        owner: root
+        group: root
+        serole: _default
+        setype: _default
+        seuser: _default
+        mode: 0600   
+      become: true   
+
+    - name: start and enable service
+      ansible.builtin.service:
+        name: httpd
+        state: restarted  
+      become: true
