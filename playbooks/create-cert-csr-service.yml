@@ -1,0 +1,65 @@
+# Enroll new certificate
+- name: New Venafi certificate
+  connection: local
+  hosts: localhost
+  pre_tasks:
+
+    - name: set vars
+      ansible.builtin.set_fact:
+        certificate_common_name: "{{ cert_cn if cert_cn else ansible_hostname + '.va.gov' }}" 
+        certificate_cert_dir: "{{ cert_dir if cert_dir else '/tmp/etc/ssl/' ~ certificate_common_name  }}"
+    
+    - name: set vars round 2
+      ansible.builtin.set_fact:
+        certificate_privatekey_path: "{{ cert_priv_key_path if cert_priv_key_path else certificate_cert_dir ~ '/' ~ certificate_common_name ~ '.key' }}"
+        certificate_csr_path: "{{ cert_csr_path if cert_csr_path  else certificate_cert_dir ~ '/' ~ certificate_common_name ~ '.csr' }}"
+        certificate_csr_origin: "{{ csr_origin | default(service) }}"    
+        # certificate_alt_name: "DNS:{{ ansible_fqdn }}" #{{ user_cn }}-{{ cn }}.example.va.gov" #IP:{{ansible_default_ipv4.address}} #
+        certificate_cert_path: "{{ cert_path if cert_path else certificate_cert_dir ~ '/' ~ certificate_common_name ~ '.pem' }}"
+        certificate_chain_path: "{{ cert_chain_path if cert_chain_path else certificate_cert_dir ~ '/' ~ certificate_common_name ~ '.chain.pem' }}"
+        certificate_remote_execution: "{{ remote_execution | default(true) }}"     
+        
+    - name: set vars round 3
+      ansible.builtin.set_fact:
+        certificate_privatekey_passphrase: "{{ cert_priv_key_passphrase }}"
+      when: certificate_csr_origin == 'service'
+
+    - name: create credentials.yml
+      ansible.builtin.template:
+        src: credentials.yml.j2
+        dest: ./credentials.yml
+      delegate_to: localhost
+      become: false
+
+    - name: print creds
+      ansible.builtin.command: cat ./credentials.yml
+      delegate_to: localhost
+      become: false 
+
+    - name: Ensure PKI directory exists on remote
+      ansible.builtin.file:
+        path: "{{ certificate_cert_dir }}"
+        state: directory
+        mode: '0755'
+    #   # become: true
+
+    - name: Generate the private key
+      ansible.builtin.openssl_privatekey:
+        path: "{{ certificate_privatekey_path }}"
+        size: 2048
+        mode: '0600'
+      when: gen_priv_key == 'yes'
+      # become: true
+
+    - name: Generate the CSR from the new key
+      community.crypto.openssl_csr:
+        path: "{{ certificate_csr_path }}"
+        privatekey_path: "{{ certificate_privatekey_path }}"
+        common_name: "{{ certificate_common_name }}"
+        organization_name: "VAPO"
+      when: gen_local_csr == 'yes'
+      # become: true
+    
+  roles:
+    - role: venafi.machine_identity.certificate
+      # become: true
